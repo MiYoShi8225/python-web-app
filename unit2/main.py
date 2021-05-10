@@ -1,17 +1,34 @@
-import altair as alt
-from altair.vegalite.v4.schema.channels import Opacity
-import matplotlib
 import pandas as pd
-import matplotlib.pyplot as  plt
 import yfinance as yf
+import altair as alt
 import streamlit as st
 
-def tickere_func(tickers, day):
+st.title('米国株価可視化アプリ')
+
+st.sidebar.write("""
+# GAFA株価
+こちらは株価可視化ツールです。
+イアkのオプションから表示・・・
+""")
+
+st.sidebar.write("""
+## 表示日数選択
+""")
+
+days = st.sidebar.slider('日数', 1, 50, 20)
+
+st.write(f"""
+### 過去 **{days}日間**のGAFAの株価
+""")
+
+
+@st.cache
+def get_data(tickers, days):
     df = pd.DataFrame()
 
     for company in tickers.keys():
         aapl = yf.Ticker(tickers[company])
-        hist = aapl.history(day)
+        hist = aapl.history(period='{}d'.format(days))
         hist.index = hist.index.strftime('%d %B %Y')
         hist = hist[['Close']]
         hist.columns = [company]
@@ -19,44 +36,62 @@ def tickere_func(tickers, day):
         df = pd.concat([df, hist])
     return df
 
-day = str('20d')
-tickers = {
-    'apple': 'AAPL',
-    'facebook': 'FB',
-    'google': 'GOOGL',
-    'microsoft': 'MSFT',
-    'netflix': 'NFLX',
-    'amazon': 'AMZN'
-}
 
-df = tickere_func(tickers, day)
+try:
+    st.sidebar.write("""
+    ## 株価の範囲指定
+    """)
 
-#print(df)
 
-companiers= ['apple', 'facebook']
-# locでcompaniersに入っている会社名だけを抽出
-data = df.loc[companiers]
-
-data = data.T.reset_index()
-#print(data)
-
-#日付-企業名-株価の並びにデータを整理した
-#print(pd.melt(data, id_vars=['Date']))
-
-data = pd.melt(data, id_vars=['Date']).rename(
-    columns={'value': 'stock prices(USD)'}
-)
-
-print(data)
-
-chart = (
-    alt.Chart(data)
-    .mark_line(opacity=0.8, clip=True)
-    .encode(
-        x="Date:T",
-        y=alt.Y("stock prices(USD):Q", stack=None, scale=alt.Scale(domain=[50,400])),
-        color='variable:N'
+    ymin, ymax = st.sidebar.slider(
+        '範囲を指定してください',
+        0.0, 3500.0, (0.0, 3500.0)
     )
-)
 
-st.write(chart)
+    tickers = {
+        'apple': 'AAPL',
+        'facebook': 'FB',
+        'google': 'GOOGL',
+        'microsoft': 'MSFT',
+        'netflix': 'NFLX',
+        'amazon': 'AMZN'
+    }
+
+    df = get_data(tickers, days)
+
+    companiers = st.multiselect(
+        '会社名を選択してください。',
+        list(df.index),
+        ['google', 'amazon', 'facebook', 'apple']
+    )
+
+    if not companiers:
+        st.error('少なくとも一社は選択してください。')
+    else:
+        data = df.loc[companiers]
+
+        # 表を表示している↓
+        st.write("### 株価(USD)", data.sort_index())
+        data = data.T.reset_index()
+
+        data = pd.melt(data, id_vars=['Date']).rename(
+            columns={'value': 'stock prices(USD)'}
+        )
+
+        chart = (
+            alt.Chart(data)
+            .mark_line(opacity=0.8, clip=True)
+            .encode(
+                x="Date:T",
+                y=alt.Y("stock prices(USD):Q", stack=None,
+                        scale=alt.Scale(domain=[ymin, ymax])),
+                color='variable:N'
+            )
+        )
+        
+        st.altair_chart(chart, use_container_width=True)
+except:
+    st.error(
+        'なにかエラーが起きています。'
+    )
+
